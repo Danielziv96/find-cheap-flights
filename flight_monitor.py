@@ -80,6 +80,18 @@ def dep_to_minutes(dep_str: str) -> int | None:
     return h * 60 + mn
 
 
+def parse_duration_minutes(duration_str: str) -> int | None:
+    """'3h 45m', '4 hr 20 min', '2h' -> total minutes"""
+    if not duration_str:
+        return None
+    h = re.search(r"(\d+)\s*hr?", duration_str, re.IGNORECASE)
+    m = re.search(r"(\d+)\s*m(?:in)?", duration_str, re.IGNORECASE)
+    hours = int(h.group(1)) if h else 0
+    mins  = int(m.group(1)) if m else 0
+    total = hours * 60 + mins
+    return total if total > 0 else None
+
+
 def send_telegram(text: str):
     requests.post(
         f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
@@ -89,7 +101,7 @@ def send_telegram(text: str):
 
 
 def deal_hash(*parts) -> str:
-    return hashlib.md5("|".join(str(p) for p in parts).encode()).hexdigest()
+    return hashlib.sha256("|".join(str(p) for p in parts).encode()).hexdigest()
 
 
 def load_sent() -> set:
@@ -104,12 +116,12 @@ def save_sent(sent: set):
 
 
 def gflights_url(dep_date: str, ret_date: str, dest: str) -> str:
-    base = (
-        f"https://www.google.com/travel/flights?hl=en"
-        f"#flt=TLV.{dest}.{dep_date}*{dest}.TLV.{ret_date}"
-        f";c:USD;e:1;sd:1;t:f"
+    # t:f triggered explore/flexible mode; removing it opens a proper search
+    return (
+        f"https://www.google.com/travel/flights"
+        f"?hl=en#flt=TLV.{dest}.{dep_date}*{dest}.TLV.{ret_date}"
+        f";c:USD;e:1;sd:1"
     )
-    return base
 
 
 def search_island(code: str, dep_date: str, ret_date: str) -> list[dict]:
@@ -162,6 +174,11 @@ def run():
             if out_min is None or out_min >= 12 * 60:
                 continue
 
+            # --- Duration filter: outbound leg < 5 hours ---
+            dur_min = parse_duration_minutes(fl.duration)
+            if dur_min is not None and dur_min >= 5 * 60:
+                continue
+
             # Dedup within this run (library returns duplicates)
             fkey = (code, fl.name, fl.departure, fl.price)
             if fkey in seen_this_run:
@@ -183,10 +200,10 @@ def run():
                 f"<b>Airline:</b> {fl.name}\n"
                 f"<b>Outbound departs:</b> {fl.departure}\n"
                 f"<b>Outbound arrives:</b> {fl.arrival}\n"
-                f"<b>Duration:</b> {fl.duration}  |  Stops: {fl.stops}\n"
+                f"<b>Outbound duration:</b> {fl.duration}  |  Stops: {fl.stops}\n"
                 f"<b>Price:</b> ${price_pp:.0f}/person (round trip)\n"
-                f"<b>Note:</b> Verify return departs island after 17:00\n\n"
-                f'<a href="{link}">Search this flight on Google Flights</a>'
+                f"<b>Note:</b> Verify return departs island at 17:00 or later\n\n"
+                f'<a href="{link}">Open prefilled search on Google Flights</a>'
             )
 
             try:
