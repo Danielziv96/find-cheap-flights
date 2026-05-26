@@ -1,8 +1,6 @@
 name: Flight Monitor
 
 on:
-  schedule:
-    - cron: '*/30 * * * *'
   workflow_dispatch:
 
 permissions:
